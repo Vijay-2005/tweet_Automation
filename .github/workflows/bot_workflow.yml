@@ -1,0 +1,38 @@
+name: Run Twitter-Telegram Bot
+
+on:
+  schedule:
+        - cron: "0 20 * * *"  # Runs at 8 PM UTC (Convert to your local time if needed)
+        - cron: "0 11 * * *"  # Runs at 11 AM UTC (Convert to your local time if needed)
+  workflow_dispatch:
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Bot Script
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
+          CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+          CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+        run: |
+          python twitter_bot4.py
