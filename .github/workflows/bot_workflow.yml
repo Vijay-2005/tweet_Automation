@@ -2,8 +2,8 @@ name: Run Twitter-Telegram Bot
 
 on:
   schedule:
-        - cron: "45 14 * * *"  # Runs at 8 PM UTC (Convert to your local time if needed)
-        - cron: "30 5 * * *"
+        - cron: "30 3 * * *"  # Runs at 9:00 AM IST  
+        - cron: "30 8 * * *"  # Runs at 2:00 PM IST  
         
   workflow_dispatch:
 
