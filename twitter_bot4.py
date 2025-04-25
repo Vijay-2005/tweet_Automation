@@ -10,6 +10,10 @@ import random
 import logging
 import threading
 import signal
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -306,12 +310,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def send_telegram_message(message):
     """Send a message to the specified Telegram chat."""
-    bot = Bot(token="7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA")
-    await bot.send_message(chat_id="TELEGRAM_CHAT_ID", text=message, parse_mode='Markdown')
+    bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
 
 def main() -> None:
     """Start the Telegram bot."""
-    application = Application.builder().token("7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA").build()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))

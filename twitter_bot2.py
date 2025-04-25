@@ -4,13 +4,17 @@ import requests
 import tweepy
 from datetime import datetime
 import random
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def fetch_tech_news():
     """
     Fetches the latest tech news articles using NewsAPI.
     Returns a list of news articles with titles, descriptions, and URLs.
     """
-    NEWS_API_KEY = "b1bd05a03cc543f29cca50a1e93e455a"  # Replace with your NewsAPI key
+    NEWS_API_KEY = os.getenv("NEWS_API_KEY")  # Get API key from environment variable
     
     # Increased pageSize to ensure we have plenty of articles to cycle through
     url = f"https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=15&apiKey={NEWS_API_KEY}"
@@ -81,7 +85,7 @@ def generate_tweet_text(article):
     """
     Uses the Gemini API to generate a tweet about the selected tech article.
     """
-    GEMINI_API_KEY = "AIzaSyBxZGMn3QOfvVzsiVHLPYRjUP_Xcqtpf0s"
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Get API key from environment variable
     endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
     url = f"{endpoint}?key={GEMINI_API_KEY}"
     
@@ -138,11 +142,11 @@ def post_tweet(tweet_text):
     """
     Posts the tweet using Twitter's API.
     """
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAJJspwEAAAAA7oxShKueYbdkd9USZpGreiZSQl0%3D8QMdOibgIjGuIU84R38X8VfC9VgM6LXC0elTnlaqdc0EcmpBWu"
-    CONSUMER_KEY = "V3ea4VkgWuUrdBwcz2cFROTLA"
-    CONSUMER_SECRET = "HoMRQg1tOcXvNMJFCxu3HRNcVdq7Jq8bNSWmF6ksdIRLxazPjS"
-    ACCESS_TOKEN = "1635973611080269825-myajTJ5j7WGtDbSzPk8aQaYybxx4gX"
-    ACCESS_TOKEN_SECRET = "DB95qIIgaqIvMnTh253qOsI15FAYM4armbg66K0otc78o"
+    BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+    CONSUMER_KEY = os.getenv("CONSUMER_KEY")
+    CONSUMER_SECRET = os.getenv("CONSUMER_SECRET")
+    ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+    ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
     
     # Create client
     client = tweepy.Client(

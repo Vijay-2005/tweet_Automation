@@ -8,6 +8,10 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from datetime import datetime
 import random
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -17,8 +21,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Global variables
-TELEGRAM_TOKEN = "7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA"  # Replace with your Telegram bot token
-TELEGRAM_CHAT_ID = "641862693"  # Replace with your Telegram chat ID
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Get token from environment variable
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Get chat ID from environment variable
 current_articles = []
 used_indices = []
 current_article = None
@@ -29,7 +33,7 @@ def fetch_tech_news():
     Fetches the latest tech news articles using NewsAPI.
     Returns a list of news articles with titles, descriptions, and URLs.
     """
-    NEWS_API_KEY = "b1bd05a03cc543f29cca50a1e93e455a"  # Replace with your NewsAPI key
+    NEWS_API_KEY = os.getenv("NEWS_API_KEY")  # Get API key from environment variable
     
     # Increased pageSize to ensure we have plenty of articles to cycle through
     url = f"https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=15&apiKey={NEWS_API_KEY}"
@@ -99,7 +103,7 @@ def generate_tweet_text(article):
     """
     Uses the Gemini API to generate a tweet about the selected tech article.
     """
-    GEMINI_API_KEY = "AIzaSyBxZGMn3QOfvVzsiVHLPYRjUP_Xcqtpf0s"
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Get API key from environment variable
     endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
     url = f"{endpoint}?key={GEMINI_API_KEY}"
     
@@ -156,11 +160,11 @@ def post_tweet(tweet_text):
     """
     Posts the tweet using Twitter's API.
     """
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAJJspwEAAAAA7oxShKueYbdkd9USZpGreiZSQl0%3D8QMdOibgIjGuIU84R38X8VfC9VgM6LXC0elTnlaqdc0EcmpBWu"
-    CONSUMER_KEY = "V3ea4VkgWuUrdBwcz2cFROTLA"
-    CONSUMER_SECRET = "HoMRQg1tOcXvNMJFCxu3HRNcVdq7Jq8bNSWmF6ksdIRLxazPjS"
-    ACCESS_TOKEN = "1635973611080269825-myajTJ5j7WGtDbSzPk8aQaYybxx4gX"
-    ACCESS_TOKEN_SECRET = "DB95qIIgaqIvMnTh253qOsI15FAYM4armbg66K0otc78o"
+    BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+    CONSUMER_KEY = os.getenv("CONSUMER_KEY")
+    CONSUMER_SECRET = os.getenv("CONSUMER_SECRET")
+    ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+    ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
     
     # Create client
     client = tweepy.Client(
@@ -297,12 +301,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def send_telegram_message(message):
     """Send a message to the specified Telegram chat."""
-    bot = Bot(token="7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA")
-    await bot.send_message(chat_id="TELEGRAM_CHAT_ID", text=message, parse_mode='Markdown')
+    bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
 
 def main() -> None:
     """Start the Telegram bot."""
-    application = Application.builder().token("7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA").build()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))

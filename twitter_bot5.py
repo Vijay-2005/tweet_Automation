@@ -1,17 +1,35 @@
 import os
 import json
 import requests
-import tweepy
 import asyncio
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import logging
 import sys
 import signal
 import threading
+import time
+from dotenv import load_dotenv
 
+# Conditional import for tweepy to handle imghdr module issue
+try:
+    import tweepy
+except ImportError as e:
+    if "No module named 'imghdr'" in str(e):
+        # Create a simple replacement for the missing imghdr module
+        import sys
+        class ImghdrModule:
+            def what(self, *args, **kwargs):
+                return None
+        sys.modules['imghdr'] = ImghdrModule()
+        import tweepy
+    else:
+        raise
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -21,19 +39,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Global variables
-TELEGRAM_TOKEN = "7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA"  # Replace with your Telegram bot token
-TELEGRAM_CHAT_ID = "641862693"  # Replace with your Telegram chat ID
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 current_articles = []
 used_indices = []
 current_article = None
 current_tweet = None
+# Timeout settings - 15 minutes in seconds
+TIMEOUT_SECONDS = 15 * 60
+start_time = None
+shutdown_timer = None
 
 def fetch_tech_news():
     """
     Fetches the latest tech news articles using NewsAPI.
     Returns a list of news articles with titles, descriptions, and URLs.
     """
-    NEWS_API_KEY = "b1bd05a03cc543f29cca50a1e93e455a"  # Replace with your NewsAPI key
+    NEWS_API_KEY = os.getenv("NEWS_API_KEY")
     
     # Increased pageSize to ensure we have plenty of articles to cycle through
     url = f"https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=15&apiKey={NEWS_API_KEY}"
@@ -103,7 +125,7 @@ def generate_tweet_text(article):
     """
     Uses the Gemini API to generate a tweet about the selected tech article.
     """
-    GEMINI_API_KEY = "AIzaSyBxZGMn3QOfvVzsiVHLPYRjUP_Xcqtpf0s"
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
     url = f"{endpoint}?key={GEMINI_API_KEY}"
     
@@ -160,11 +182,11 @@ def post_tweet(tweet_text):
     """
     Posts the tweet using Twitter's API.
     """
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAJJspwEAAAAA7oxShKueYbdkd9USZpGreiZSQl0%3D8QMdOibgIjGuIU84R38X8VfC9VgM6LXC0elTnlaqdc0EcmpBWu"
-    CONSUMER_KEY = "V3ea4VkgWuUrdBwcz2cFROTLA"
-    CONSUMER_SECRET = "HoMRQg1tOcXvNMJFCxu3HRNcVdq7Jq8bNSWmF6ksdIRLxazPjS"
-    ACCESS_TOKEN = "1635973611080269825-myajTJ5j7WGtDbSzPk8aQaYybxx4gX"
-    ACCESS_TOKEN_SECRET = "DB95qIIgaqIvMnTh253qOsI15FAYM4armbg66K0otc78o"
+    BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+    CONSUMER_KEY = os.getenv("CONSUMER_KEY")
+    CONSUMER_SECRET = os.getenv("CONSUMER_SECRET")
+    ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+    ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
     
     # Create client
     client = tweepy.Client(
@@ -187,6 +209,7 @@ def post_tweet(tweet_text):
 # Telegram Bot functions
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
+    update_activity_timestamp()  # Track user activity
     await update.message.reply_text(
         "👋 Welcome to the Twitter-Telegram Bot!\n"
         "Use /tweet to find and post tech news tweets."
@@ -194,6 +217,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
+    update_activity_timestamp()  # Track user activity
     await update.message.reply_text(
         "Commands:\n"
         "/tweet - Start the tweet generation process\n"
@@ -207,6 +231,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def tweet_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start the tweet generation process."""
     global current_articles, used_indices, current_article, current_tweet
+    
+    # Track user activity
+    update_activity_timestamp()
     
     await update.message.reply_text("🔍 Looking for tech news articles...")
     
@@ -263,12 +290,20 @@ async def tweet_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     }
     with open("tweet_draft.json", "w") as f:
         json.dump(draft, f, indent=2)
+    
+    # Update activity timestamp again after completing tweet generation
+    update_activity_timestamp()
+
 def force_exit():
     """Force exit the application in a reliable way"""
     logger.info("Forcing application to exit")
     os._exit(0)  # This is a more reliable way to exit than sys.exit()
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global current_articles, used_indices, current_article, current_tweet
+    
+    # Update activity timestamp on any user message
+    update_activity_timestamp()
     
     if not current_tweet:
         await update.message.reply_text("Please use /tweet to start generating tweets first.")
@@ -302,16 +337,80 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "- Type 'new' to generate a new tweet\n"
             "- Type 'exit' to cancel"
         )
-     
+
+def check_timeout():
+    """Check if the application has been running for too long and exit if needed"""
+    global start_time
+    elapsed_time = time.time() - start_time
+    if (elapsed_time >= TIMEOUT_SECONDS):
+        logger.warning(f"Application reached timeout limit of {TIMEOUT_SECONDS/60} minutes. Shutting down...")
+        try:
+            asyncio.run(send_telegram_message("⏱️ Bot automatically shut down after reaching the 15-minute timeout limit to free resources."))
+        except Exception as e:
+            logger.error(f"Failed to send timeout notification: {str(e)}")
+        force_exit()
+    else:
+        # Schedule next check in 30 seconds
+        threading.Timer(30.0, check_timeout).start()
+
+# Track user activity to prevent timeout during active use
+last_activity_time = None
+
+def update_activity_timestamp():
+    """Update the last activity timestamp to prevent timeout during active use"""
+    global last_activity_time
+    last_activity_time = time.time()
+
+def check_inactivity_timeout():
+    """Check if the application has been inactive for too long"""
+    global start_time, last_activity_time
+    current_time = time.time()
+    
+    # If there's been activity, use that time instead of start time
+    reference_time = last_activity_time if last_activity_time else start_time
+    
+    # Calculate elapsed time since last activity or start
+    elapsed_time = current_time - reference_time
+    
+    if (elapsed_time >= TIMEOUT_SECONDS):
+        logger.warning(f"Application inactive for {TIMEOUT_SECONDS/60} minutes. Shutting down to free resources...")
+        try:
+            asyncio.run(send_telegram_message("⏱️ Bot automatically shut down after 15 minutes of inactivity to free resources."))
+        except Exception as e:
+            logger.error(f"Failed to send inactivity timeout notification: {str(e)}")
+        force_exit()
+    else:
+        # Schedule next check in 30 seconds
+        threading.Timer(30.0, check_inactivity_timeout).start()
 
 async def send_telegram_message(message):
     """Send a message to the specified Telegram chat."""
-    bot = Bot(token="7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA")
-    await bot.send_message(chat_id="TELEGRAM_CHAT_ID", text=message, parse_mode='Markdown')
+    bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='Markdown')
 
 def main() -> None:
     """Start the Telegram bot."""
-    application = Application.builder().token("7323688717:AAE6fu2f8YYNFBAqnXqi36CaHo2FMxstuDA").build()
+    global start_time, shutdown_timer, last_activity_time
+    
+    # Initialize the timeout system
+    start_time = time.time()
+    last_activity_time = time.time()  # Initialize activity tracking
+    logger.info(f"Starting application with {TIMEOUT_SECONDS/60} minute timeout")
+    
+    # Start inactivity monitoring instead of absolute timeout
+    check_inactivity_timeout()
+    
+    # Send startup notification asynchronously via background thread to prevent delays
+    def send_startup_notification():
+        try:
+            asyncio.run(send_telegram_message("🤖 Twitter bot started. Will automatically shut down after 15 minutes of inactivity to free resources."))
+        except Exception as e:
+            logger.error(f"Failed to send startup notification: {str(e)}")
+    
+    # Start notification in background thread
+    threading.Thread(target=send_startup_notification).start()
+
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))
@@ -326,4 +425,16 @@ def main() -> None:
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Bot manually stopped by user.")
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+    finally:
+        # Make sure we attempt to send a shutdown message if the bot crashes
+        try:
+            asyncio.run(send_telegram_message("⚠️ Bot has shut down."))
+        except:
+            pass
+        logger.info("Bot shutdown complete.")
