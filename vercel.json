@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "twitter_bot5.py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "twitter_bot5.py"
+      "dest": "api/index.py"
     }
   ],
   "env": {

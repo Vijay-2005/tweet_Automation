@@ -4,6 +4,17 @@
 
 This Twitter automation bot is configured for deployment on Vercel. It automatically posts tech news tweets via Twitter API and runs continuously without any timeout.
 
+### File Structure
+
+```
+tweet_Automation/
+├── api/               # Vercel serverless functions
+│   ├── index.py       # Main API endpoint
+│   └── requirements.txt   # Python dependencies
+├── vercel.json        # Vercel configuration
+└── README.md          # Documentation
+```
+
 ### Deployment Steps:
 
 1. Fork or clone this repository to your GitHub account
@@ -40,4 +51,4 @@ You can set up scheduled tasks (like cron jobs) to hit the `/post-tweet` endpoin
 
 1. Create a `.env` file with the above environment variables
 2. Install dependencies: `pip install -r requirements.txt`
-3. Run locally: `python twitter_bot5.py`
+3. Run locally: `python api/index.py`
