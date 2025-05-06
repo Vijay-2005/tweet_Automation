@@ -1,38 +1,14 @@
-from flask import Flask, Response, jsonify, request
 import os
 import json
 import requests
 import random
-import sys
-import logging
+from http.server import BaseHTTPRequestHandler
 from datetime import datetime
+import tweepy
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# Conditional import for tweepy to handle imghdr module issue
-try:
-    import tweepy
-except ImportError as e:
-    if "No module named 'imghdr'" in str(e):
-        # Create a simple replacement for the missing imghdr module
-        class ImghdrModule:
-            def what(self, *args, **kwargs):
-                return None
-        sys.modules['imghdr'] = ImghdrModule()
-        import tweepy
-    else:
-        raise
-
-app = Flask(__name__)
 
 def fetch_tech_news():
     """
@@ -44,7 +20,6 @@ def fetch_tech_news():
     # Increased pageSize to ensure we have plenty of articles to cycle through
     url = f"https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=15&apiKey={NEWS_API_KEY}"
     
-    logger.info("Fetching latest tech news from NewsAPI...")
     response = requests.get(url)
     
     if response.status_code == 200:
@@ -52,7 +27,6 @@ def fetch_tech_news():
         articles = data.get("articles", [])
         
         if not articles:
-            logger.warning("No tech news articles found.")
             return None
             
         # Format the articles for processing
@@ -71,10 +45,8 @@ def fetch_tech_news():
                     "url": url
                 })
         
-        logger.info(f"Found {len(formatted_articles)} tech news articles.")
         return formatted_articles
     else:
-        logger.error(f"Error fetching tech news: {response.status_code}")
         return None
 
 def generate_tweet_text(article):
@@ -128,10 +100,8 @@ def generate_tweet_text(article):
             final_tweet = f"{tweet_text.strip()}\n\n{article['url']}"
             return final_tweet
         except (KeyError, IndexError):
-            logger.error("Unexpected response format")
             return None
     else:
-        logger.error(f"Error generating tweet text: {response.text}")
         return None
 
 def post_tweet(tweet_text):
@@ -156,56 +126,72 @@ def post_tweet(tweet_text):
     # Post text-only tweet
     try:
         response = client.create_tweet(text=tweet_text)
-        logger.info(f"Tweet posted successfully: {response}")
-        return True, f"Tweet posted successfully!"
+        return True, "Tweet posted successfully!"
     except Exception as e:
-        logger.error(f"Error posting tweet: {str(e)}")
         return False, f"Error posting tweet: {str(e)}"
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def catch_all(path):
-    return Response("Twitter bot API is active! Use POST requests to trigger specific actions.", mimetype='text/plain')
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(f"Twitter bot API is active! Use POST requests to /api/post-tweet to trigger actions. Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".encode())
+        return
 
-@app.route('/health')
-def health_check():
-    return jsonify({
-        "status": "online",
-        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    })
-
-@app.route('/post-tweet', methods=['POST'])
-def trigger_tweet():
-    try:
-        # Fetch articles
-        articles = fetch_tech_news()
-        if not articles:
-            return jsonify({"error": "Failed to fetch news articles"}), 500
-            
-        # Select an article
-        selected_index = random.randint(0, len(articles)-1)
-        selected_article = articles[selected_index]
-        
-        # Generate tweet
-        tweet_text = generate_tweet_text(selected_article)
-        if not tweet_text:
-            return jsonify({"error": "Failed to generate tweet text"}), 500
-            
-        # Post tweet
-        success, message = post_tweet(tweet_text)
-        
-        if success:
-            return jsonify({
-                "status": "success", 
-                "message": message,
-                "article": selected_article["title"],
-                "tweet": tweet_text
-            })
+    def do_POST(self):
+        if self.path == '/api/post-tweet':
+            try:
+                # Get request body length
+                content_length = int(self.headers.get('Content-Length', 0))
+                
+                # Fetch articles
+                articles = fetch_tech_news()
+                if not articles:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Failed to fetch news articles"}).encode())
+                    return
+                
+                # Select an article
+                selected_index = random.randint(0, len(articles)-1)
+                selected_article = articles[selected_index]
+                
+                # Generate tweet
+                tweet_text = generate_tweet_text(selected_article)
+                if not tweet_text:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Failed to generate tweet text"}).encode())
+                    return
+                
+                # Post tweet
+                success, message = post_tweet(tweet_text)
+                
+                if success:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response_data = {
+                        "status": "success",
+                        "message": message,
+                        "article": selected_article["title"],
+                        "tweet": tweet_text
+                    }
+                    self.wfile.write(json.dumps(response_data).encode())
+                else:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": message}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
         else:
-            return jsonify({"error": message}), 500
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# Entry point for local development
-if __name__ == "__main__":
-    app.run(debug=True, port=3000) 
+            self.send_response(404)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write("Not found".encode()) 
