@@ -12,7 +12,7 @@ import signal
 import threading
 import time
 from dotenv import load_dotenv
-from flask import Flask, Response
+from flask import Flask, Response, jsonify
 
 # Conditional import for tweepy to handle imghdr module issue
 try:
@@ -370,10 +370,52 @@ app = Flask(__name__)
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def catch_all(path):
-    # Start the bot in the background if it's not already running
-    threading.Thread(target=main).start()
-    return Response("Twitter bot is running!", mimetype='text/plain')
+    # For serverless environments, we need to just return a response
+    # and not try to start a long-running process
+    return Response("Twitter bot API is active! Use POST requests to trigger specific actions.", mimetype='text/plain')
+
+@app.route('/health')
+def health_check():
+    return jsonify({
+        "status": "online",
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    })
+
+@app.route('/post-tweet', methods=['POST'])
+def trigger_tweet():
+    try:
+        # Fetch articles
+        articles = fetch_tech_news()
+        if not articles:
+            return jsonify({"error": "Failed to fetch news articles"}), 500
+            
+        # Select an article
+        selected_index = random.randint(0, len(articles)-1)
+        selected_article = articles[selected_index]
+        
+        # Generate tweet
+        tweet_text = generate_tweet_text(selected_article)
+        if not tweet_text:
+            return jsonify({"error": "Failed to generate tweet text"}), 500
+            
+        # Post tweet
+        success, message = post_tweet(tweet_text)
+        
+        if success:
+            return jsonify({
+                "status": "success", 
+                "message": message,
+                "article": selected_article["title"],
+                "tweet": tweet_text
+            })
+        else:
+            return jsonify({"error": message}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Keep the main execution for local development
 if __name__ == "__main__":
+    # For local development, run the Telegram bot
     main()
+    # For local flask development
+    # app.run(debug=True, port=3000)

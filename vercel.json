@@ -11,5 +11,8 @@
       "src": "/(.*)",
       "dest": "twitter_bot5.py"
     }
-  ]
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  }
 } 

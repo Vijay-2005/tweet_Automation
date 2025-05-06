@@ -20,7 +20,21 @@ This Twitter automation bot is configured for deployment on Vercel. It automatic
    - `GEMINI_API_KEY`: Your Google Gemini API Key
 4. Deploy the project
 
-The main file `twitter_bot5.py` will be deployed as a serverless function.
+### Using the Serverless API
+
+Once deployed, you can interact with the bot through these HTTP endpoints:
+
+1. `GET /` - Health check to verify the API is running
+2. `GET /health` - Returns status information
+3. `POST /post-tweet` - Automatically generates and posts a tweet based on tech news
+
+Example usage with cURL:
+```
+# Post a tweet automatically
+curl -X POST https://your-vercel-deployment-url.vercel.app/post-tweet
+```
+
+You can set up scheduled tasks (like cron jobs) to hit the `/post-tweet` endpoint at regular intervals.
 
 ### Local Development
 
