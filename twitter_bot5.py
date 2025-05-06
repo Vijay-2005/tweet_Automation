@@ -12,6 +12,7 @@ import signal
 import threading
 import time
 from dotenv import load_dotenv
+from flask import Flask, Response
 
 # Conditional import for tweepy to handle imghdr module issue
 try:
@@ -45,10 +46,6 @@ current_articles = []
 used_indices = []
 current_article = None
 current_tweet = None
-# Timeout settings - 15 minutes in seconds
-TIMEOUT_SECONDS = 15 * 60
-start_time = None
-shutdown_timer = None
 
 def fetch_tech_news():
     """
@@ -209,7 +206,6 @@ def post_tweet(tweet_text):
 # Telegram Bot functions
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
-    update_activity_timestamp()  # Track user activity
     await update.message.reply_text(
         "👋 Welcome to the Twitter-Telegram Bot!\n"
         "Use /tweet to find and post tech news tweets."
@@ -217,7 +213,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
-    update_activity_timestamp()  # Track user activity
     await update.message.reply_text(
         "Commands:\n"
         "/tweet - Start the tweet generation process\n"
@@ -231,9 +226,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def tweet_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start the tweet generation process."""
     global current_articles, used_indices, current_article, current_tweet
-    
-    # Track user activity
-    update_activity_timestamp()
     
     await update.message.reply_text("🔍 Looking for tech news articles...")
     
@@ -290,9 +282,6 @@ async def tweet_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     }
     with open("tweet_draft.json", "w") as f:
         json.dump(draft, f, indent=2)
-    
-    # Update activity timestamp again after completing tweet generation
-    update_activity_timestamp()
 
 def force_exit():
     """Force exit the application in a reliable way"""
@@ -301,9 +290,6 @@ def force_exit():
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global current_articles, used_indices, current_article, current_tweet
-    
-    # Update activity timestamp on any user message
-    update_activity_timestamp()
     
     if not current_tweet:
         await update.message.reply_text("Please use /tweet to start generating tweets first.")
@@ -317,9 +303,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(message)
         if success:
             current_tweet = None  # Reset after successful posting
-            await update.message.reply_text("✅ Tweet posted. Bot is shutting down.")
-            # Stop the bot after a successful post
-            threading.Timer(2.0, force_exit).start()
+            # Don't shut down after posting
+            await update.message.reply_text("✅ Tweet posted. Ready for the next command.")
             
     elif text == "new":
         await update.message.reply_text("🔍 Looking for a new article...")
@@ -328,7 +313,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif text == "exit":
         await update.message.reply_text("👋 Tweet generation cancelled.")
         current_tweet = None
-        threading.Timer(2.0, force_exit).start()
+        # Keep running even after exit command
         
     else:
         await update.message.reply_text(
@@ -338,51 +323,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "- Type 'exit' to cancel"
         )
 
-def check_timeout():
-    """Check if the application has been running for too long and exit if needed"""
-    global start_time
-    elapsed_time = time.time() - start_time
-    if (elapsed_time >= TIMEOUT_SECONDS):
-        logger.warning(f"Application reached timeout limit of {TIMEOUT_SECONDS/60} minutes. Shutting down...")
-        try:
-            asyncio.run(send_telegram_message("⏱️ Bot automatically shut down after reaching the 15-minute timeout limit to free resources."))
-        except Exception as e:
-            logger.error(f"Failed to send timeout notification: {str(e)}")
-        force_exit()
-    else:
-        # Schedule next check in 30 seconds
-        threading.Timer(30.0, check_timeout).start()
-
-# Track user activity to prevent timeout during active use
-last_activity_time = None
-
-def update_activity_timestamp():
-    """Update the last activity timestamp to prevent timeout during active use"""
-    global last_activity_time
-    last_activity_time = time.time()
-
-def check_inactivity_timeout():
-    """Check if the application has been inactive for too long"""
-    global start_time, last_activity_time
-    current_time = time.time()
-    
-    # If there's been activity, use that time instead of start time
-    reference_time = last_activity_time if last_activity_time else start_time
-    
-    # Calculate elapsed time since last activity or start
-    elapsed_time = current_time - reference_time
-    
-    if (elapsed_time >= TIMEOUT_SECONDS):
-        logger.warning(f"Application inactive for {TIMEOUT_SECONDS/60} minutes. Shutting down to free resources...")
-        try:
-            asyncio.run(send_telegram_message("⏱️ Bot automatically shut down after 15 minutes of inactivity to free resources."))
-        except Exception as e:
-            logger.error(f"Failed to send inactivity timeout notification: {str(e)}")
-        force_exit()
-    else:
-        # Schedule next check in 30 seconds
-        threading.Timer(30.0, check_inactivity_timeout).start()
-
 async def send_telegram_message(message):
     """Send a message to the specified Telegram chat."""
     bot = Bot(token=TELEGRAM_TOKEN)
@@ -390,20 +330,20 @@ async def send_telegram_message(message):
 
 def main() -> None:
     """Start the Telegram bot."""
-    global start_time, shutdown_timer, last_activity_time
+    # global start_time, shutdown_timer, last_activity_time
     
     # Initialize the timeout system
-    start_time = time.time()
-    last_activity_time = time.time()  # Initialize activity tracking
-    logger.info(f"Starting application with {TIMEOUT_SECONDS/60} minute timeout")
+    # start_time = time.time()
+    # last_activity_time = time.time()  # Initialize activity tracking
+    # logger.info(f"Starting application with {TIMEOUT_SECONDS/60} minute timeout")
     
     # Start inactivity monitoring instead of absolute timeout
-    check_inactivity_timeout()
+    # check_inactivity_timeout()
     
     # Send startup notification asynchronously via background thread to prevent delays
     def send_startup_notification():
         try:
-            asyncio.run(send_telegram_message("🤖 Twitter bot started. Will automatically shut down after 15 minutes of inactivity to free resources."))
+            asyncio.run(send_telegram_message("🤖 Twitter bot started. Running continuously."))
         except Exception as e:
             logger.error(f"Failed to send startup notification: {str(e)}")
     
@@ -424,17 +364,16 @@ def main() -> None:
     print(f"Starting Telegram Twitter Bot - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+# Adding Vercel serverless function handler
+app = Flask(__name__)
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def catch_all(path):
+    # Start the bot in the background if it's not already running
+    threading.Thread(target=main).start()
+    return Response("Twitter bot is running!", mimetype='text/plain')
+
+# Keep the main execution for local development
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.info("Bot manually stopped by user.")
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-    finally:
-        # Make sure we attempt to send a shutdown message if the bot crashes
-        try:
-            asyncio.run(send_telegram_message("⚠️ Bot has shut down."))
-        except:
-            pass
-        logger.info("Bot shutdown complete.")
+    main()
